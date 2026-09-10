@@ -1,0 +1,27 @@
+name: Hive Daily Market Pulse
+
+on:
+  schedule:
+    - cron: '0 12 * * *'   # Her gün saat 12:00 UTC'de çalışır
+  workflow_dispatch:       # Manuel olarak da çalıştırabilirsin
+
+jobs:
+  run-post-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: pip install beem requests feedparser
+      
+      - name: Run Post Bot
+        env:
+          HIVE_USERNAME: ${{ secrets.HIVE_USERNAME }}
+          HIVE_POSTING_KEY: ${{ secrets.HIVE_POSTING_KEY }}
+          REPO_NAME: ${{ secrets.REPO_NAME }}
+        run: python post_bot.py

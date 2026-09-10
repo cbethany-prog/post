@@ -7,7 +7,6 @@ import re
 import feedparser
 from collections import Counter
 from beem import Hive
-from beem.account import Account
 
 # --- AYARLAR ---
 HIVE_NODE = "https://api.hive.blog"
@@ -45,7 +44,7 @@ def get_hive_engine_data():
         response = requests.post(url, json=payload, timeout=10).json()
         data = response.get("result", [])
         
-        # KRITIK DÜZELTME: Sadece hem hacmi > 0 olan HEM de 'price' anahtarı mevcut olan tokenları al
+        # KRİTİK DÜZELTME: Sadece hem hacmi > 0 olan HEM de 'price' anahtarı mevcut olan tokenları al
         valid_data = [d for d in data if float(d.get("volume", 0)) > 0 and "price" in d and d["price"]]
         
         top_10_volume = valid_data[:10]
@@ -166,27 +165,38 @@ What are your thoughts on today's market and news? Let's discuss below! 👇
     return f"Daily Market Pulse: Crypto, Hive Engine & Top News | {today}", content
 
 def publish_post(title, body):
-    """Postu Hive blockchain'e gönderir"""
+    """Postu Hive blockchain'e gönderir (DOĞRU YÖNTEM: hive.broadcast.comment)"""
     try:
         hive = Hive(node=HIVE_NODE, keys=[POSTING_KEY], nobroadcast=False)
-        account = Account(USERNAME, blockchain_instance=hive)
         
         # Eşsiz URL (Tarih içerir, asla çakışmaz)
         permlink = f"daily-market-pulse-{time.strftime('%Y-%m-%d')}"
         
         print("📡 Publishing to Hive...")
-        tx = account.comment(
-            title=title, 
-            body=body, 
+        
+        # json_metadata oluştur (Etiketler burada tanımlanır)
+        json_metadata = {
+            "tags": TAGS,
+            "app": "hive-daily-pulse/1.0"
+        }
+        
+        # beem'in resmi ve en stabil post yayınlama metodu
+        tx = hive.broadcast.comment(
+            author=USERNAME,
             permlink=permlink,
-            parent_author="", 
-            parent_permlink=MAIN_TAG, 
-            tags=TAGS
+            parent_author="",          # Ana post olduğu için boş
+            parent_permlink=MAIN_TAG,  # Ana kategori (crypto)
+            title=title,
+            body=body,
+            json_metadata=json_metadata
         )
+        
         print(f"✅ SUCCESSFULLY PUBLISHED!")
         print(f"🔗 Link: https://hive.blog/{MAIN_TAG}/@{USERNAME}/{permlink}")
     except Exception as e:
         print(f"❌ Publishing Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 def main():
     print("=" * 60)

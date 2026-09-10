@@ -20,7 +20,7 @@ REPO_NAME = os.getenv("REPO_NAME", "hive-bot")
 MAIN_TAG = "crypto"
 TAGS = ["crypto", "hive", "bitcoin", "data", "news"]
 
-COVER_IMAGE_URL = f"https://raw.githubusercontent.com/{USERNAME}/{REPO_NAME}/main/cover.png"
+COVER_IMAGE_URL = "https://images.hive.blog/DQmRqpnr8HMfLHTWGbVRBEXgt51Hz1AFQPvLESjZJNdaEch/cover.png"
 
 def get_global_prices():
     try:

@@ -20,7 +20,6 @@ REPO_NAME = os.getenv("REPO_NAME", "hive-bot")
 MAIN_TAG = "crypto"
 TAGS = ["crypto", "hive", "bitcoin", "data", "news"]
 
-# Kapak görseli URL'i
 COVER_IMAGE_URL = f"https://raw.githubusercontent.com/{USERNAME}/{REPO_NAME}/main/cover.png"
 
 def get_global_prices():
@@ -33,8 +32,11 @@ def get_global_prices():
         return None
 
 def get_hive_engine_data():
+    """Hive Engine'den Top 10 (Hacim) ve Top 5 (Fiyat) verilerini çeker - Fallback'li"""
     try:
         url = "https://api.hive-engine.com/rpc/contracts"
+        
+        # Önce metrics tablosunu dene
         payload = {
             "jsonrpc": "2.0", "id": 1, "method": "find",
             "params": {
@@ -45,10 +47,29 @@ def get_hive_engine_data():
         response = requests.post(url, json=payload, timeout=10).json()
         data = response.get("result", [])
         
-        # Hem hacmi > 0 olan HEM de 'price' anahtarı mevcut olan tokenları al
+        # Hem volume hem price olan tokenları filtrele
         valid_data = [d for d in data if float(d.get("volume", 0)) > 0 and "price" in d and d["price"]]
         
-        top_10_volume = valid_data[:10]
+        # Eğer metrics boşsa, params tablosunu dene (fallback)
+        if not valid_data:
+            print("️ Metrics tablosu boş, params tablosu deneniyor...")
+            payload2 = {
+                "jsonrpc": "2.0", "id": 2, "method": "find",
+                "params": {
+                    "contract": "market", "table": "params", "query": {},
+                    "limit": 100
+                }
+            }
+            response2 = requests.post(url, json=payload2, timeout=10).json()
+            data2 = response2.get("result", [])
+            # params tablosundan symbol ve son fiyat bilgilerini al
+            valid_data = [d for d in data2 if "symbol" in d]
+        
+        if not valid_data:
+            print("️ Hive Engine verisi alınamadı, boş tablo gösterilecek")
+            return [], []
+        
+        top_10_volume = sorted(valid_data, key=lambda x: float(x.get("volume", 0)), reverse=True)[:10]
         top_5_price = sorted(valid_data, key=lambda x: float(x.get("price", 0)), reverse=True)[:5]
         return top_10_volume, top_5_price
     except Exception as e:
@@ -71,39 +92,67 @@ def get_trending_tags():
         return ["crypto", "hive", "art", "gaming", "finance"]
 
 def get_crypto_news():
-    try:
-        feed = feedparser.parse("https://www.coindesk.com/arc/outboundfeeds/rss/")
-        news_items = []
-        for entry in feed.entries[:5]:
-            title = entry.title
-            link = entry.link
-            summary = entry.get('summary', entry.get('description', ''))
-            clean_summary = re.sub(r'<[^>]+>', '', summary)[:120].strip() + "..."
-            news_items.append(f"**[{title}]({link})**\n> {clean_summary}\n")
-        return news_items
-    except Exception as e:
-        print(f"Haber çekme hatası: {e}")
-        return ["*News feed temporarily unavailable.*"]
+    """Birden fazla RSS kaynağından haber çeker (fallback'li)"""
+    rss_sources = [
+        "https://www.coindesk.com/arc/outboundfeeds/rss/",
+        "https://cointelegraph.com/rss",
+        "https://decrypt.co/feed",
+        "https://bitcoinmagazine.com/feed"
+    ]
+    
+    for source_url in rss_sources:
+        try:
+            print(f"  📡 {source_url.split('/')[2]} deneniyor...")
+            feed = feedparser.parse(source_url)
+            if feed.entries and len(feed.entries) >= 3:
+                news_items = []
+                for entry in feed.entries[:5]:
+                    title = entry.title
+                    link = entry.link
+                    summary = entry.get('summary', entry.get('description', ''))
+                    clean_summary = re.sub(r'<[^>]+>', '', summary)[:120].strip() + "..."
+                    news_items.append(f"**[{title}]({link})**\n> {clean_summary}\n")
+                print(f"  ✅ {len(news_items)} haber bulundu")
+                return news_items
+        except Exception as e:
+            print(f"  ⚠️ {source_url.split('/')[2]} başarısız: {e}")
+            continue
+    
+    print("⚠️ Hiçbir haber kaynağı çalışmadı")
+    return ["*News feed temporarily unavailable. Please check back tomorrow.*"]
 
 def generate_post(global_prices, he_volume, he_price, trending_tags, news):
     today = time.strftime("%B %d, %Y")
     
+    # 1. Global Piyasa
     global_md = "| Asset | Price (USD) | 24h Change |\n| :--- | :--- | :--- |\n"
     for coin_id, name in [("bitcoin", "Bitcoin (BTC)"), ("ethereum", "Ethereum (ETH)"), ("solana", "Solana (SOL)"), ("hive", "Hive (HIVE)")]:
         if coin_id in global_prices:
             p = global_prices[coin_id]
-            emoji = "🟢" if p['usd_24h_change'] >= 0 else "🔴"
+            emoji = "🟢" if p['usd_24h_change'] >= 0 else ""
             global_md += f"| **{name}** | ${p['usd']:,.4f} | {emoji} {p['usd_24h_change']:.2f}% |\n"
 
-    he_vol_md = "| Rank | Token | Volume (24h) |\n| :--- | :--- | :--- |\n"
-    for i, token in enumerate(he_volume, 1):
-        he_vol_md += f"| {i} | **{token['symbol']}** | ${float(token['volume']):,.2f} |\n"
+    # 2. Hive Engine Hacim (boşsa mesaj göster)
+    if he_volume:
+        he_vol_md = "| Rank | Token | Volume (24h) |\n| :--- | :--- | :--- |\n"
+        for i, token in enumerate(he_volume, 1):
+            vol = float(token.get("volume", 0))
+            he_vol_md += f"| {i} | **{token['symbol']}** | ${vol:,.2f} |\n"
+    else:
+        he_vol_md = "*Hive Engine volume data temporarily unavailable.*\n"
 
-    he_price_md = "| Rank | Token | Price (HIVE) |\n| :--- | :--- | :--- |\n"
-    for i, token in enumerate(he_price, 1):
-        he_price_md += f"| {i} | **{token['symbol']}** | {float(token['price']):,.4f} |\n"
+    # 3. Hive Engine Fiyat (boşsa mesaj göster)
+    if he_price:
+        he_price_md = "| Rank | Token | Price (HIVE) |\n| :--- | :--- | :--- |\n"
+        for i, token in enumerate(he_price, 1):
+            he_price_md += f"| {i} | **{token['symbol']}** | {float(token['price']):,.4f} |\n"
+    else:
+        he_price_md = "*Hive Engine price data temporarily unavailable.*\n"
 
+    # 4. Trending Tags
     tags_md = ", ".join([f"`#{tag}`" for tag in trending_tags])
+
+    # 5. Haberler
     news_md = "\n".join([f"{i+1}. {item}" for i, item in enumerate(news)])
 
     content = f"""![Daily Market Pulse]({COVER_IMAGE_URL})
@@ -155,18 +204,14 @@ What are your thoughts on today's market and news? Let's discuss below! 👇
     return f"Daily Market Pulse: Crypto, Hive Engine & Top News | {today}", content
 
 def publish_post(title, body):
-    """Postu Hive blockchain'e gönderir (TransactionBuilder ile %100 stabil yöntem)"""
+    """Postu Hive blockchain'e gönderir"""
     try:
         hive = Hive(node=HIVE_NODE, nobroadcast=False)
-        
         permlink = f"daily-market-pulse-{time.strftime('%Y-%m-%d')}"
-        
-        # json_metadata string formatında olmalı
         json_metadata = json.dumps({"tags": TAGS, "app": "hive-daily-pulse/1.0"})
         
         print("📡 Publishing to Hive...")
         
-        # 1. Comment operasyonunu oluştur
         op = Comment(
             parent_author="",
             parent_permlink=MAIN_TAG,
@@ -177,19 +222,20 @@ def publish_post(title, body):
             json_metadata=json_metadata
         )
         
-        # 2. TransactionBuilder ile manuel imzala ve gönder
         tx = TransactionBuilder(blockchain_instance=hive)
         tx.appendOps(op)
         tx.appendWif(POSTING_KEY)
         tx.sign()
         response = tx.broadcast()
         
-        # 3. Başarı kontrolü
-        if response and "id" in response:
+        # DÜZELTME: "id" yerine "signatures" kontrol et (Hive node böyle döndürüyor)
+        if response and isinstance(response, dict) and "signatures" in response:
             print(f"✅ SUCCESSFULLY PUBLISHED!")
             print(f"🔗 Link: https://hive.blog/{MAIN_TAG}/@{USERNAME}/{permlink}")
         else:
-            print(f"❌ Blockchain yanıtı beklenmedik: {response}")
+            print(f"⚠️ Blockchain yanıtı alındı ama format beklenmedik: {type(response)}")
+            if response:
+                print(f"   Yanıt anahtarları: {list(response.keys()) if isinstance(response, dict) else 'dict değil'}")
             
     except Exception as e:
         print(f"❌ Publishing Error: {e}")
@@ -202,7 +248,7 @@ def main():
     print("=" * 60)
     
     if not USERNAME or not POSTING_KEY:
-        print("❌ ERROR: HIVE_USERNAME or HIVE_POSTING_KEY is missing in GitHub Secrets!")
+        print("❌ ERROR: HIVE_USERNAME or HIVE_POSTING_KEY is missing!")
         return
     
     print("📡 Fetching Global Prices...")
@@ -213,17 +259,20 @@ def main():
     
     print("📡 Fetching Hive Engine Data...")
     he_vol, he_price = get_hive_engine_data()
+    print(f"   Volume tokens: {len(he_vol)}, Price tokens: {len(he_price)}")
     
     print("📡 Fetching Trending Tags...")
     tags = get_trending_tags()
+    print(f"   Found {len(tags)} tags: {tags}")
     
     print("📡 Fetching Crypto News...")
     news = get_crypto_news()
+    print(f"   Found {len(news)} news items")
     
     print("📝 Generating Post Content...")
     title, body = generate_post(prices, he_vol, he_price, tags, news)
     
-    print("🚀 Publishing...")
+    print(" Publishing...")
     publish_post(title, body)
     print("=" * 60)
     print("✅ Bot finished successfully!")

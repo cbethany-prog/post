@@ -17,7 +17,7 @@ USERNAME = os.getenv("HIVE_USERNAME")
 POSTING_KEY = os.getenv("HIVE_POSTING_KEY")
 
 MAIN_TAG = "crypto"
-TAGS = ["crypto", "hive", "bitcoin", "data", "news"]
+TAGS = ["crypto", "hive", "bitcoin", "hive-engine", "news", "leo"]
 
 # Sabit Kapak Görseli URL'i (f harfine gerek yok)
 COVER_IMAGE_URL = "https://images.hive.blog/DQmRqpnr8HMfLHTWGbVRBEXgt51Hz1AFQPvLESjZJNdaEch/cover.png"

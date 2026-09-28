@@ -1,9 +1,14 @@
-name: Hive Daily Market Pulse
+name: Daily Market Pulse
 
 on:
   schedule:
     - cron: '0 12 * * *'   # Her gün saat 12:00 UTC'de çalışır
-  workflow_dispatch:       # Manuel olarak da çalıştırabilirsin
+  workflow_dispatch:       # Manuel çalıştırma
+    inputs:
+      dry_run:
+        description: "Test modu (true = Hive'a post GÖNDERME)"
+        type: boolean
+        default: true
 
 jobs:
   run-post-bot:
@@ -24,4 +29,7 @@ jobs:
           HIVE_USERNAME: ${{ secrets.HIVE_USERNAME }}
           HIVE_POSTING_KEY: ${{ secrets.HIVE_POSTING_KEY }}
           REPO_NAME: ${{ secrets.REPO_NAME }}
+          # Zamanlanmış çalışmada input boş gelir -> gerçek post atılır
+          # Manuel çalışmada varsayılan true -> sadece test
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: python post_bot.py

@@ -33,20 +33,44 @@ def get_global_prices():
         return None
 
 def get_trending_tags():
-    """Hive'daki son 20 popüler posttan en çok kullanılan 5 etiketi bulur"""
+    """Hive'daki güncel trending postlardan en çok kullanılan 5 etiketi bulur"""
     try:
-        hive = Hive(node=HIVE_NODE)
-        discussions = hive.get_discussions_by_trending({"limit": 20})
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "bridge.get_ranked_posts",
+            "params": {"sort": "trending", "tag": "", "observer": "", "limit": 30},
+            "id": 1,
+        }
+        resp = requests.post(HIVE_NODE, json=payload, timeout=15)
+        resp.raise_for_status()
+        posts = resp.json().get("result", []) or []
+
         tag_counter = Counter()
-        for post in discussions:
-            tags = post.get("tags", []) or post.get("json_metadata", {}).get("tags", [])
-            for tag in tags:
-                if tag and tag != MAIN_TAG:
-                    tag_counter[tag.lower()] += 1
-        return [tag for tag, count in tag_counter.most_common(5)]
+        for post in posts:
+            meta = post.get("json_metadata") or {}
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except Exception:
+                    meta = {}
+            tags = meta.get("tags", []) if isinstance(meta, dict) else []
+
+            # Aynı post içinde tekrar eden etiketi bir kez say (sırayı koru)
+            clean = dict.fromkeys(
+                t.strip().lower() for t in tags if isinstance(t, str) and t.strip()
+            )
+            for tag in clean:
+                # Ana etiketi ve topluluk kodlarını (hive-123456) hariç tut
+                if tag == MAIN_TAG or re.match(r"^hive-\d+$", tag):
+                    continue
+                tag_counter[tag] += 1
+
+        top_tags = [tag for tag, _ in tag_counter.most_common(5)]
+        print(f"   {len(posts)} trending post tarandı")
+        return top_tags
     except Exception as e:
         print(f"Trending etiket hatası: {e}")
-        return ["crypto", "hive", "art", "gaming", "finance"]
+        return []  # Sabit liste yerine boş dön; post içinde bilgi notu gösterilir
 
 def get_crypto_news():
     """Birden fazla RSS kaynağından haber çeker (fallback'li)"""
@@ -91,15 +115,16 @@ def generate_post(global_prices, trending_tags, news):
             global_md += f"| **{name}** | ${p['usd']:,.4f} | {emoji} {p['usd_24h_change']:.2f}% |\n"
 
     # 2. Trending Etiketler
-    tags_md = ", ".join([f"`#{tag}`" for tag in trending_tags])
+    if trending_tags:
+        tags_md = ", ".join([f"`#{tag}`" for tag in trending_tags])
+    else:
+        tags_md = "*Trending data is temporarily unavailable today.*"
 
     # 3. Haberler
     news_md = "\n".join([f"{i+1}. {item}" for i, item in enumerate(news)])
 
     # Tam Metin
     content = f"""![Daily Market Pulse]({COVER_IMAGE_URL})
-
-# Daily Market Pulse: Crypto, Hive & Top News | {today}
 
 Hello Hive Community! 👋
 
@@ -128,8 +153,6 @@ Welcome to your daily data brief. No fluff and no opinions, just the raw numbers
 *Note: This report brings together real-time data from public sources like CoinGecko and major crypto news outlets. The information is meant for educational purposes and is not financial advice. Please do your own research.*
 
 What are your thoughts on today's market and news? Let's discuss below! 👇
-
-#crypto #hive #bitcoin #data #news
 """
     return f"Daily Market Pulse: Crypto, Hive & Top News | {today}", content
 

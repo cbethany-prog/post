@@ -35,18 +35,40 @@ def get_global_prices():
         print(f"Global fiyat hatası: {e}")
         return None
 
+HIVE_API_NODES = [
+    "https://api.hive.blog",
+    "https://api.deathwing.me",
+    "https://hive-api.arcange.eu",
+]
+
+def _fetch_trending_posts():
+    """Trending postları çeker. Önce bridge API, olmazsa condenser API dener."""
+    attempts = [
+        ("bridge.get_ranked_posts", {"sort": "trending", "tag": "", "limit": 30}),
+        ("condenser_api.get_discussions_by_trending", [{"tag": "", "limit": 30}]),
+    ]
+    for node in HIVE_API_NODES:
+        for method, params in attempts:
+            try:
+                payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
+                resp = requests.post(node, json=payload, timeout=15)
+                data = resp.json()
+                if "error" in data:
+                    print(f"   ⚠️ {node.split('/')[2]} {method} hata: {str(data['error'])[:150]}")
+                    continue
+                posts = data.get("result") or []
+                if posts:
+                    print(f"   ✅ {node.split('/')[2]} {method}: {len(posts)} post")
+                    return posts
+                print(f"   ⚠️ {node.split('/')[2]} {method}: boş sonuç")
+            except Exception as e:
+                print(f"   ⚠️ {node.split('/')[2]} {method} başarısız: {e}")
+    return []
+
 def get_trending_tags():
     """Hive'daki güncel trending postlardan en çok kullanılan 5 etiketi bulur"""
     try:
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "bridge.get_ranked_posts",
-            "params": {"sort": "trending", "tag": "", "observer": "", "limit": 30},
-            "id": 1,
-        }
-        resp = requests.post(HIVE_NODE, json=payload, timeout=15)
-        resp.raise_for_status()
-        posts = resp.json().get("result", []) or []
+        posts = _fetch_trending_posts()
 
         tag_counter = Counter()
         for post in posts:
@@ -68,12 +90,10 @@ def get_trending_tags():
                     continue
                 tag_counter[tag] += 1
 
-        top_tags = [tag for tag, _ in tag_counter.most_common(5)]
-        print(f"   {len(posts)} trending post tarandı")
-        return top_tags
+        return [tag for tag, _ in tag_counter.most_common(5)]
     except Exception as e:
         print(f"Trending etiket hatası: {e}")
-        return []  # Sabit liste yerine boş dön; post içinde bilgi notu gösterilir
+        return []  # Boş dönerse post içinde bu bölüm gösterilmez
 
 HIVE_ENGINE_NODES = [
     "https://api.hive-engine.com/rpc/contracts",
@@ -202,13 +222,7 @@ def generate_post(global_prices, trending_tags, news, he_tokens=None):
             emoji = "🟢" if p['usd_24h_change'] >= 0 else "🔴"
             global_md += f"| **{name}** | ${p['usd']:,.4f} | {emoji} {p['usd_24h_change']:.2f}% |\n"
 
-    # 2. Trending Etiketler
-    if trending_tags:
-        tags_md = ", ".join([f"`#{tag}`" for tag in trending_tags])
-    else:
-        tags_md = "*Trending data is temporarily unavailable today.*"
-
-    # 3. Hive-Engine Token Tablosu
+    # 2. Hive-Engine Token Tablosu
     if he_tokens:
         hive_usd = (global_prices.get("hive") or {}).get("usd")
         he_md = "| # | Token | Price (HIVE) | ≈ USD | 24h Change | 24h Volume (HIVE) |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n"
@@ -223,8 +237,21 @@ def generate_post(global_prices, trending_tags, news, he_tokens=None):
     else:
         he_md = "*Hive-Engine data is temporarily unavailable today.*"
 
-    # 4. Haberler
+    # 3. Haberler
     news_md = "\n".join([f"{i+1}. {item}" for i, item in enumerate(news)])
+
+    # Bölümleri sırayla diz; veri yoksa (ör. trending) bölüm hiç eklenmez, numaralar otomatik kayar
+    sections = [("🌍", "Global Market Overview", global_md)]
+    if trending_tags:
+        tags_md = ", ".join([f"`#{tag}`" for tag in trending_tags])
+        sections.append(("🔥", "Trending Topics on Hive", tags_md))
+    sections.append(("🪙", "Hive-Engine: Top 15 Tokens by 24h Volume", he_md))
+    sections.append(("📰", "Top 5 Crypto News of the Day", news_md))
+
+    sections_md = "\n\n---\n\n".join(
+        f"### {emoji} {i}. {title}\n\n{text}"
+        for i, (emoji, title, text) in enumerate(sections, 1)
+    )
 
     # Tam Metin
     content = f"""![Daily Market Pulse]({COVER_IMAGE_URL})
@@ -235,27 +262,7 @@ Welcome to your daily data brief. No fluff and no opinions, just the raw numbers
 
 ---
 
-### 🌍 1. Global Market Overview
-
-{global_md}
-
----
-
-### 🔥 2. Trending Topics on Hive
-
-{tags_md}
-
----
-
-### 🪙 3. Hive-Engine: Top 15 Tokens by 24h Volume
-
-{he_md}
-
----
-
-### 📰 4. Top 5 Crypto News of the Day
-
-{news_md}
+{sections_md}
 
 ---
 

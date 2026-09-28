@@ -16,6 +16,9 @@ HIVE_NODE = "https://api.hive.blog"
 USERNAME = os.getenv("HIVE_USERNAME")
 POSTING_KEY = os.getenv("HIVE_POSTING_KEY")
 
+# DRY_RUN=1 ise post Hive'a gönderilmez, sadece ekrana/dosyaya yazılır
+DRY_RUN = os.getenv("DRY_RUN", "").strip().lower() in ("1", "true", "yes")
+
 MAIN_TAG = "crypto"
 TAGS = ["crypto", "hive", "bitcoin", "hive-engine", "news", "leo"]
 
@@ -303,7 +306,10 @@ def main():
     print("🐝 Hive Daily Market Pulse Bot Starting...")
     print("=" * 60)
     
-    if not USERNAME or not POSTING_KEY:
+    if DRY_RUN:
+        print("🧪 DRY RUN modu: post Hive'a GÖNDERİLMEYECEK")
+
+    if not DRY_RUN and (not USERNAME or not POSTING_KEY):
         print("❌ ERROR: HIVE_USERNAME or HIVE_POSTING_KEY is missing!")
         return
     
@@ -327,6 +333,22 @@ def main():
     print("📝 Generating Post Content...")
     title, body = generate_post(prices, tags, news, he_tokens)
     
+    if DRY_RUN:
+        print("\n" + "=" * 60)
+        print(f"TITLE: {title}")
+        print("=" * 60)
+        print(body)
+        print("=" * 60)
+        with open("preview.md", "w", encoding="utf-8") as f:
+            f.write(body)
+        # GitHub Actions'ta özet sayfasında markdown olarak görünür
+        summary_path = os.getenv("GITHUB_STEP_SUMMARY")
+        if summary_path:
+            with open(summary_path, "a", encoding="utf-8") as f:
+                f.write(f"## 🧪 DRY RUN - {title}\n\n---\n\n{body}\n")
+        print("🧪 DRY RUN bitti, Hive'a gönderilmedi.")
+        return
+
     print("🚀 Publishing...")
     publish_post(title, body)
     print("=" * 60)

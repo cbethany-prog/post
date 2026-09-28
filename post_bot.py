@@ -72,6 +72,91 @@ def get_trending_tags():
         print(f"Trending etiket hatası: {e}")
         return []  # Sabit liste yerine boş dön; post içinde bilgi notu gösterilir
 
+HIVE_ENGINE_NODES = [
+    "https://api.hive-engine.com/rpc/contracts",
+    "https://herpc.dtools.dev/contracts",
+    "https://engine.rishipanthee.com/contracts",
+]
+
+def _fmt_price(x):
+    """Küçük fiyatlarda daha fazla basamak gösterir"""
+    if x >= 1:
+        return f"{x:,.4f}"
+    if x >= 0.01:
+        return f"{x:.5f}"
+    return f"{x:.8f}"
+
+def _valid_ts(ts, now):
+    """Expiration alanı (saniye veya ms) hala geçerli mi?"""
+    try:
+        ts = float(ts)
+    except (TypeError, ValueError):
+        return False
+    if ts > 1e12:
+        ts /= 1000
+    return ts > now
+
+def get_hive_engine_tokens(limit=15):
+    """Hive-Engine marketinden 24s hacme göre en aktif token'ları çeker"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "find",
+        "params": {"contract": "market", "table": "metrics", "query": {}, "limit": 1000},
+        "id": 1,
+    }
+    for node in HIVE_ENGINE_NODES:
+        try:
+            print(f"  📡 {node.split('/')[2]} deneniyor...")
+            resp = requests.post(node, json=payload, timeout=20)
+            resp.raise_for_status()
+            rows = resp.json().get("result") or []
+            if not rows:
+                continue
+
+            now = time.time()
+            tokens = []
+            for r in rows:
+                symbol = r.get("symbol")
+                if not symbol or symbol == "SWAP.HIVE":  # SWAP.HIVE = HIVE'ın kendisi
+                    continue
+                try:
+                    price = float(r.get("lastPrice", 0))
+                except (TypeError, ValueError):
+                    continue
+                if price <= 0:
+                    continue
+
+                # 24s hacim (süresi dolmuşsa 0 say)
+                try:
+                    volume = float(r.get("volume", 0))
+                except (TypeError, ValueError):
+                    volume = 0.0
+                if not _valid_ts(r.get("volumeExpiration"), now):
+                    volume = 0.0
+
+                # 24s değişim (dünkü fiyat geçerliyse hesapla)
+                change = None
+                try:
+                    last_day = float(r.get("lastDayPrice", 0))
+                    if last_day > 0 and _valid_ts(r.get("lastDayPriceExpiration"), now):
+                        change = (price - last_day) / last_day * 100
+                except (TypeError, ValueError):
+                    pass
+
+                tokens.append({"symbol": symbol, "price": price, "volume": volume, "change": change})
+
+            tokens.sort(key=lambda t: t["volume"], reverse=True)
+            top = tokens[:limit]
+            if top:
+                print(f"  ✅ {len(top)} Hive-Engine token bulundu")
+                return top
+        except Exception as e:
+            print(f"  ⚠️ {node.split('/')[2]} başarısız: {e}")
+            continue
+
+    print("⚠️ Hive-Engine verisi alınamadı")
+    return []
+
 def get_crypto_news():
     """Birden fazla RSS kaynağından haber çeker (fallback'li)"""
     rss_sources = [
@@ -102,7 +187,7 @@ def get_crypto_news():
     print("⚠️ Hiçbir haber kaynağı çalışmadı")
     return ["*News feed temporarily unavailable. Please check back tomorrow.*"]
 
-def generate_post(global_prices, trending_tags, news):
+def generate_post(global_prices, trending_tags, news, he_tokens=None):
     """Tüm verileri birleştirip İngilizce Markdown postu oluşturur"""
     today = time.strftime("%B %d, %Y")
     
@@ -120,7 +205,22 @@ def generate_post(global_prices, trending_tags, news):
     else:
         tags_md = "*Trending data is temporarily unavailable today.*"
 
-    # 3. Haberler
+    # 3. Hive-Engine Token Tablosu
+    if he_tokens:
+        hive_usd = (global_prices.get("hive") or {}).get("usd")
+        he_md = "| # | Token | Price (HIVE) | ≈ USD | 24h Change | 24h Volume (HIVE) |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n"
+        for i, t in enumerate(he_tokens, 1):
+            usd = f"${_fmt_price(t['price'] * hive_usd)}" if hive_usd else "N/A"
+            if t["change"] is None:
+                change = "—"
+            else:
+                emoji = "🟢" if t["change"] >= 0 else "🔴"
+                change = f"{emoji} {t['change']:.2f}%"
+            he_md += f"| {i} | **{t['symbol']}** | {_fmt_price(t['price'])} | {usd} | {change} | {t['volume']:,.2f} |\n"
+    else:
+        he_md = "*Hive-Engine data is temporarily unavailable today.*"
+
+    # 4. Haberler
     news_md = "\n".join([f"{i+1}. {item}" for i, item in enumerate(news)])
 
     # Tam Metin
@@ -144,7 +244,13 @@ Welcome to your daily data brief. No fluff and no opinions, just the raw numbers
 
 ---
 
-### 📰 3. Top 5 Crypto News of the Day
+### 🪙 3. Hive-Engine: Top 15 Tokens by 24h Volume
+
+{he_md}
+
+---
+
+### 📰 4. Top 5 Crypto News of the Day
 
 {news_md}
 
@@ -211,12 +317,15 @@ def main():
     tags = get_trending_tags()
     print(f"   Found {len(tags)} tags: {tags}")
     
+    print("📡 Fetching Hive-Engine Tokens...")
+    he_tokens = get_hive_engine_tokens()
+
     print("📡 Fetching Crypto News...")
     news = get_crypto_news()
     print(f"   Found {len(news)} news items")
     
     print("📝 Generating Post Content...")
-    title, body = generate_post(prices, tags, news)
+    title, body = generate_post(prices, tags, news, he_tokens)
     
     print("🚀 Publishing...")
     publish_post(title, body)

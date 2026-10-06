@@ -20,7 +20,7 @@ POSTING_KEY = os.getenv("HIVE_POSTING_KEY")
 DRY_RUN = os.getenv("DRY_RUN", "").strip().lower() in ("1", "true", "yes")
 
 MAIN_TAG = "crypto"
-TAGS = ["crypto", "hive", "pimp", "hive-engine", "pob", "news", "leo"]
+TAGS = ["crypto", "hive", "pimp", "hive-engine", "proofofbrain", "news", "inleo", "leo", "cent", "tribes"]
 
 # Sabit Kapak Görseli URL'i (f harfine gerek yok)
 COVER_IMAGE_URL = "https://images.hive.blog/DQmd7pZkVRtXrQ4ETEWBKSrvKPXFSPBRYcLvdAx5g7E8PGL/daily.png"

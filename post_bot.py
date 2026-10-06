@@ -256,9 +256,9 @@ def generate_post(global_prices, trending_tags, news, he_tokens=None):
     # Tam Metin
     content = f"""![Daily Market Pulse]({COVER_IMAGE_URL})
 
-Hello Hive Community! 👋
+Hello Hive Community,
 
-Welcome to your daily data brief. No fluff and no opinions, just the raw numbers from the global crypto markets, the Hive ecosystem, and the top news of the day.
+Welcome to your daily data brief. No fluff and no opinions, just the raw numbers from the global crypto markets, the Hive ecosystem and the top news of the day.
 
 ---
 
@@ -268,7 +268,7 @@ Welcome to your daily data brief. No fluff and no opinions, just the raw numbers
 
 *Note: This report brings together real-time data from public sources like CoinGecko and major crypto news outlets. The information is meant for educational purposes and is not financial advice. Please do your own research.*
 
-What are your thoughts on today's market and news? Let's discuss below! 👇
+What are your thoughts on today's market and news? Let's discuss below 👇
 """
     return f"Daily Market Pulse - Crypto, Hive & Top News | {today}", content
 

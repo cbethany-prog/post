@@ -23,7 +23,7 @@ MAIN_TAG = "crypto"
 TAGS = ["crypto", "hive", "pimp", "hive-engine", "pob", "news", "leo"]
 
 # Sabit Kapak Görseli URL'i (f harfine gerek yok)
-COVER_IMAGE_URL = "https://images.hive.blog/DQmfZ4KQt5Xw6fB6Jsioq4ZnpJ9umQ9i9GwAFmeS5bSKnaV/cover.png"
+COVER_IMAGE_URL = "https://images.hive.blog/DQmd7pZkVRtXrQ4ETEWBKSrvKPXFSPBRYcLvdAx5g7E8PGL/daily.png"
 
 def get_global_prices():
     """CoinGecko'dan global fiyatları çeker"""
@@ -270,7 +270,7 @@ Welcome to your daily data brief. No fluff and no opinions, just the raw numbers
 
 What are your thoughts on today's market and news? Let's discuss below! 👇
 """
-    return f"Daily Market Pulse: Crypto, Hive & Top News | {today}", content
+    return f"Daily Market Pulse - Crypto, Hive & Top News | {today}", content
 
 def publish_post(title, body):
     """Postu Hive blockchain'e gönderir (TransactionBuilder ile %100 stabil)"""

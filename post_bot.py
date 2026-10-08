@@ -23,7 +23,7 @@ MAIN_TAG = "crypto"
 TAGS = ["crypto", "hive", "pimp", "hive-engine", "proofofbrain", "news", "inleo", "leo", "cent", "tribes"]
 
 # Sabit Kapak Görseli URL'i (f harfine gerek yok)
-COVER_IMAGE_URL = "https://images.hive.blog/DQmR32tQbfZ3Jj3wJSjeDuYyTnkCRiPgmNbzbbEcSgfrwoy/cover.png"
+COVER_IMAGE_URL = "https://images.hive.blog/DQmRqpnr8HMfLHTWGbVRBEXgt51Hz1AFQPvLESjZJNdaEch/cover.png"
 
 def get_global_prices():
     """CoinGecko'dan global fiyatları çeker"""
